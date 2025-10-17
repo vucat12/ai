@@ -19,8 +19,49 @@ export interface AnthropicAdapterConfig extends AIAdapterConfig {
   apiKey: string;
 }
 
-export class AnthropicAdapter extends BaseAdapter {
-  name = "anthropic";
+const ANTHROPIC_MODELS = [
+  "claude-3-5-sonnet-20241022",
+  "claude-3-5-sonnet-20240620",
+  "claude-3-opus-20240229",
+  "claude-3-sonnet-20240229",
+  "claude-3-haiku-20240307",
+  "claude-2.1",
+  "claude-2.0",
+  "claude-instant-1.2",
+] as const;
+
+const ANTHROPIC_IMAGE_MODELS = [] as const;
+
+export type AnthropicModel = (typeof ANTHROPIC_MODELS)[number];
+
+/**
+ * Anthropic-specific provider options
+ * @see https://ai-sdk.dev/providers/ai-sdk-providers/anthropic
+ */
+export interface AnthropicProviderOptions {
+  /** Enable reasoning with budget tokens */
+  thinking?: {
+    type: 'enabled';
+    budgetTokens: number;
+  };
+  /** Cache control for prompt caching */
+  cacheControl?: {
+    type: 'ephemeral';
+    /** Cache TTL: '5m' (default) | '1h' */
+    ttl?: '5m' | '1h';
+  };
+  /** Include reasoning content in requests. Defaults to true */
+  sendReasoning?: boolean;
+}
+
+export class AnthropicAdapter extends BaseAdapter<
+  typeof ANTHROPIC_MODELS,
+  typeof ANTHROPIC_IMAGE_MODELS,
+  AnthropicProviderOptions
+> {
+  name = "anthropic" as const;
+  models = ANTHROPIC_MODELS;
+  imageModels = ANTHROPIC_IMAGE_MODELS;
   private client: Anthropic;
 
   constructor(config: AnthropicAdapterConfig) {
@@ -37,6 +78,7 @@ export class AnthropicAdapter extends BaseAdapter {
   async chatCompletion(
     options: ChatCompletionOptions
   ): Promise<ChatCompletionResult> {
+    const providerOpts = options.providerOptions as AnthropicProviderOptions | undefined;
     const { systemMessage, messages } = this.formatMessages(options.messages);
 
     const requestParams: any = {
@@ -49,6 +91,14 @@ export class AnthropicAdapter extends BaseAdapter {
       stop_sequences: options.stopSequences,
       stream: false,
     };
+
+    // Apply Anthropic-specific provider options
+    if (providerOpts) {
+      if (providerOpts.thinking) {
+        requestParams.thinking = providerOpts.thinking;
+      }
+      // Note: cacheControl and sendReasoning are applied at the message/tool level
+    }
 
     // Add tools if provided
     if (options.tools && options.tools.length > 0) {
@@ -144,6 +194,7 @@ export class AnthropicAdapter extends BaseAdapter {
   async *chatStream(
     options: ChatCompletionOptions
   ): AsyncIterable<StreamChunk> {
+    const providerOpts = options.providerOptions as AnthropicProviderOptions | undefined;
     const { systemMessage, messages } = this.formatMessages(options.messages);
 
     const requestParams: any = {
@@ -156,6 +207,13 @@ export class AnthropicAdapter extends BaseAdapter {
       stop_sequences: options.stopSequences,
       stream: true,
     };
+
+    // Apply Anthropic-specific provider options
+    if (providerOpts) {
+      if (providerOpts.thinking) {
+        requestParams.thinking = providerOpts.thinking;
+      }
+    }
 
     // Add tools if provided
     if (options.tools && options.tools.length > 0) {
@@ -253,12 +311,12 @@ export class AnthropicAdapter extends BaseAdapter {
                   : (event.delta.stop_reason as any),
               usage: event.usage
                 ? {
-                    promptTokens: event.usage.input_tokens || 0,
-                    completionTokens: event.usage.output_tokens || 0,
-                    totalTokens:
-                      (event.usage.input_tokens || 0) +
-                      (event.usage.output_tokens || 0),
-                  }
+                  promptTokens: event.usage.input_tokens || 0,
+                  completionTokens: event.usage.output_tokens || 0,
+                  totalTokens:
+                    (event.usage.input_tokens || 0) +
+                    (event.usage.output_tokens || 0),
+                }
                 : undefined,
             };
           }

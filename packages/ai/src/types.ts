@@ -25,6 +25,10 @@ export interface Tool {
   execute?: (args: any) => Promise<string> | string;
 }
 
+export interface ToolConfig {
+  [key: string]: Tool
+}
+
 export interface ChatCompletionOptions {
   model: string;
   messages: Message[];
@@ -37,11 +41,13 @@ export interface ChatCompletionOptions {
   stream?: boolean;
   tools?: Tool[];
   toolChoice?:
-    | "auto"
-    | "none"
-    | { type: "function"; function: { name: string } };
+  | "auto"
+  | "none"
+  | { type: "function"; function: { name: string } };
   maxIterations?: number; // For automatic tool execution (default: 5)
   metadata?: Record<string, any>;
+  /** Provider-specific options (e.g., { openai: OpenAIProviderOptions }) */
+  providerOptions?: Record<string, any>;
 }
 
 export type StreamChunkType = "content" | "tool_call" | "done" | "error";
@@ -135,6 +141,8 @@ export interface TextGenerationOptions {
   presencePenalty?: number;
   stopSequences?: string[];
   stream?: boolean;
+  /** Provider-specific options (e.g., { openai: OpenAIProviderOptions }) */
+  providerOptions?: Record<string, any>;
 }
 
 export interface TextGenerationResult {
@@ -184,8 +192,63 @@ export interface EmbeddingResult {
   };
 }
 
-export interface AIAdapter {
+export interface ImageGenerationOptions {
+  model: string;
+  prompt: string;
+  /** Number of images to generate (default: 1) */
+  n?: number;
+  /** Image size in format "widthxheight" (e.g., "1024x1024") */
+  size?: string;
+  /** Aspect ratio in format "width:height" (e.g., "16:9") */
+  aspectRatio?: string;
+  /** Seed for reproducible generation */
+  seed?: number;
+  /** Maximum images per API call (for batching) */
+  maxImagesPerCall?: number;
+  /** Provider-specific options */
+  providerOptions?: Record<string, any>;
+  /** Abort signal for cancellation */
+  abortSignal?: AbortSignal;
+  /** Custom headers */
+  headers?: Record<string, string>;
+}
+
+export interface ImageData {
+  /** Base64-encoded image data */
+  base64: string;
+  /** Binary image data */
+  uint8Array: Uint8Array;
+  /** MIME type of the image */
+  mediaType: string;
+}
+
+export interface ImageGenerationResult {
+  /** Generated image (when n=1) */
+  image?: ImageData;
+  /** Generated images (when n>1) */
+  images?: ImageData[];
+  /** Warnings from the provider */
+  warnings?: string[];
+  /** Provider-specific metadata */
+  providerMetadata?: Record<string, any>;
+  /** Response metadata */
+  response?: {
+    id: string;
+    model: string;
+    timestamp: number;
+  };
+}
+
+export interface AIAdapter<
+  TModels extends readonly string[] = readonly string[],
+  TImageModels extends readonly string[] = readonly string[],
+  TProviderOptions extends Record<string, any> = Record<string, any>
+> {
   name: string;
+  models: TModels;
+  imageModels?: TImageModels;
+  // Type-only property for provider options inference
+  _providerOptions?: TProviderOptions;
 
   // Chat methods
   chatCompletion(options: ChatCompletionOptions): Promise<ChatCompletionResult>;
@@ -207,6 +270,9 @@ export interface AIAdapter {
 
   // Embeddings
   createEmbeddings(options: EmbeddingOptions): Promise<EmbeddingResult>;
+
+  // Image generation (optional)
+  generateImage?(options: ImageGenerationOptions): Promise<ImageGenerationResult>;
 }
 
 export interface AIAdapterConfig {

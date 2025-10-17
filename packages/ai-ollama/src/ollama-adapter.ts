@@ -19,8 +19,33 @@ export interface OllamaAdapterConfig extends AIAdapterConfig {
   host?: string;
 }
 
-export class OllamaAdapter extends BaseAdapter {
+const OLLAMA_MODELS = [
+  "llama2",
+  "llama3",
+  "codellama",
+  "mistral",
+  "mixtral",
+  "phi",
+  "neural-chat",
+  "starling-lm",
+  "orca-mini",
+  "vicuna",
+  "nous-hermes",
+  "nomic-embed-text",
+  "gpt-oss:20b"
+] as const;
+
+const OLLAMA_IMAGE_MODELS = [] as const;
+
+export type OllamaModel = (typeof OLLAMA_MODELS)[number];
+
+export class OllamaAdapter extends BaseAdapter<
+  typeof OLLAMA_MODELS,
+  typeof OLLAMA_IMAGE_MODELS
+> {
   name = "ollama";
+  models = OLLAMA_MODELS;
+  imageModels = OLLAMA_IMAGE_MODELS;
   private client: Ollama;
 
   constructor(config: OllamaAdapterConfig = {}) {

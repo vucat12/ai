@@ -1,9 +1,11 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { AI, toStreamResponse } from "@tanstack/ai";
-import { AnthropicAdapter } from "@tanstack/ai-anthropic";
-import type { Tool } from "@tanstack/ai";
-
+import { AI, tool } from "@tanstack/ai";
+import { OllamaAdapter } from "@tanstack/ai-ollama";
+import { OpenAIAdapter } from "@tanstack/ai-openai";
+import { wrapExternalProvider } from "@tanstack/ai";
 import guitars from "@/data/example-guitars";
+
+
 
 const SYSTEM_PROMPT = `You are a helpful assistant for a store that sells guitars.
 
@@ -13,9 +15,9 @@ You can use the following tools to help the user:
 - recommendGuitar: Recommend a guitar to the user
 `;
 
-// Define tools with execute functions
-const tools: Tool[] = [
-  {
+// Define tools with the exact Tool structure - no conversions under the hood!
+const tools = {
+  getGuitars: tool({
     type: "function",
     function: {
       name: "getGuitars",
@@ -29,8 +31,8 @@ const tools: Tool[] = [
     execute: async () => {
       return JSON.stringify(guitars);
     },
-  },
-  {
+  }),
+  recommendGuitar: tool({
     type: "function",
     function: {
       name: "recommendGuitar",
@@ -42,58 +44,74 @@ const tools: Tool[] = [
             type: "string",
             description: "The id of the guitar to recommend",
           },
+          name: {
+            type: "boolean",
+            description: "Whether to include the name in the response",
+          },
         },
         required: ["id"],
       },
     },
-    execute: async ({ id }: { id: string }) => {
-      return JSON.stringify({ id });
+    execute: async (args) => {
+      // ✅ args is automatically typed as { id: string; name?: boolean }
+      return JSON.stringify({ id: args.id });
     },
+  }),
+}
+
+
+
+import { createOpenAI, OpenAIResponsesProviderOptions } from "@ai-sdk/openai"
+
+const openAi = createOpenAI({
+  apiKey: process.env.AI_KEY!,
+});
+
+const vercelOpenAiAdapter = wrapExternalProvider<OpenAIResponsesProviderOptions>()(openAi);
+
+
+// Initialize AI with tools and system prompts in constructor
+const ai = new AI({
+  adapters: {
+    openAi: new OpenAIAdapter({
+      apiKey: process.env.AI_KEY!,
+    }),
+    ollama: new OllamaAdapter({
+      apiKey: process.env.AI_KEY!,
+    }),
+    // this works the same way as the adapters above because wrapper converted it to our convention
+    externalOpenAi: vercelOpenAiAdapter,
   },
-];
+  fallbacks: [
+    {
+      adapter: "openAi",
+      model: "gpt-4o-mini",
+    },
+    {
+      adapter: "ollama",
+      model: "gpt-oss:20b"
+    }
+  ],
+  tools,
+  systemPrompts: [SYSTEM_PROMPT],
+});
 
 export const Route = createFileRoute("/demo/api/tanchat")({
+  loader: async () => {
+    return {
+      message: "TanChat API Route with Provider Options",
+    };
+  },
   server: {
     handlers: {
       POST: async ({ request }) => {
-        try {
-          const { messages } = await request.json();
-
-          // Initialize AI with Anthropic
-          const ai = new AI(
-            new AnthropicAdapter({
-              apiKey: process.env.ANTHROPIC_API_KEY!,
-            })
-          );
-
-          // Add system message if not present
-          const allMessages =
-            messages[0]?.role === "system"
-              ? messages
-              : [{ role: "system", content: SYSTEM_PROMPT }, ...messages];
-
-          // streamChat automatically handles tool execution!
-          const stream = ai.streamChat({
-            model: "claude-3-5-sonnet-20241022",
-            messages: allMessages,
-            temperature: 0.7,
-            tools,
-            toolChoice: "auto",
-            maxIterations: 5,
-          });
-
-          // Convert to HTTP response - that's it!
-          return toStreamResponse(stream);
-        } catch (error) {
-          console.error("Chat API error:", error);
-          return new Response(
-            JSON.stringify({ error: "Failed to process chat request" }),
-            {
-              status: 500,
-              headers: { "Content-Type": "application/json" },
-            }
-          );
-        }
+        const { messages } = await request.json();
+        return ai.chat({
+          model: "gpt-5",
+          adapter: "externalOpenAi",
+          as: "response",
+          messages,
+        });
       },
     },
   },
