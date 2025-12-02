@@ -11,7 +11,7 @@ export interface ToolCall {
 }
 
 export interface ModelMessage {
-  role: 'system' | 'user' | 'assistant' | 'tool'
+  role: 'user' | 'assistant' | 'tool'
   content: string | null
   name?: string
   toolCalls?: Array<ToolCall>
