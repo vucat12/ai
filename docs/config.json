@@ -57,7 +57,7 @@
         {
           "label": "Connection Adapters",
           "to": "guides/connection-adapters"
-        }
+        },
         {
           "label": "Per-Model Type Safety",
           "to": "guides/per-model-type-safety"
